@@ -5,7 +5,6 @@ from typing import List, Dict, Optional
 import gradio as gr
 from dotenv import load_dotenv
 from typing import Any
-# --- LangChain / LLM / RAG bits ---
 from langchain_openai import ChatOpenAI
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
@@ -15,11 +14,8 @@ from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
 from langchain.chains import create_history_aware_retriever, create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.runnables import Runnable
-# --- Document loaders ---
 from langchain_community.document_loaders import PyPDFLoader, UnstructuredFileLoader
 from langchain_community.document_loaders import FireCrawlLoader
-
-# --- Firestore chat history ---
 from google.cloud import firestore
 from langchain_google_firestore import FirestoreChatMessageHistory
 
@@ -33,7 +29,6 @@ COLLECTION_NAME = os.getenv("FIRESTORE_COLLECTION", "chat_history")
 
 # LLM & embeddings
 def get_llm():
-    # requires OPENAI_API_KEY in env (already set as per your setup)
     return ChatOpenAI(model="gpt-4o-mini")
 
 def get_embeddings():
@@ -41,7 +36,7 @@ def get_embeddings():
 
 # Paths (per-session vector store to keep things separate)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_ROOT = os.path.join(BASE_DIR, "db")  # free tier: ephemeral (ok for dev)
+DB_ROOT = os.path.join(BASE_DIR, "db") 
 os.makedirs(DB_ROOT, exist_ok=True)
 
 # In-memory registries keyed by session_id
@@ -98,7 +93,7 @@ def init_history(session_id: str) -> FirestoreChatMessageHistory:
         collection=COLLECTION_NAME,
         client=client
     )
-    # Ensure doc exists (for your list view)
+    # Ensure doc exists 
     client.collection(COLLECTION_NAME).document(session_id).set(
         {"created": firestore.SERVER_TIMESTAMP}, merge=True
     )
@@ -166,7 +161,6 @@ def to_text(content: Any) -> str:
             if isinstance(p, str):
                 parts.append(p)
             elif isinstance(p, dict):
-                # OpenAI-style content parts
                 if "text" in p:
                     parts.append(str(p["text"]))
                 elif p.get("type") == "text" and "text" in p:
@@ -180,7 +174,6 @@ def to_text(content: Any) -> str:
         return "\n".join(parts)
     # Fallback for BaseMessage or other objects
     try:
-        # LangChain messages often have `.content`
         return to_text(getattr(content, "content"))
     except Exception:
         return str(content)
@@ -207,10 +200,9 @@ def build_index(session_id: str, mode: str, url: str, up_files, chunk_size: int,
         if not url or not url.strip():
             return "Please enter a URL."
         docs = load_from_url(url.strip(), firecrawl_mode="scrape")
-    else:  # Files
+    else:  
         if not up_files:
             return "Please upload at least one file."
-        # Gradio File set to type="filepath" -> it's List[str]
         docs = load_from_files(up_files)
 
     if not docs:
@@ -243,9 +235,7 @@ def chat(user_input: str, history_ui, session_id: str):
     llm = get_llm()
 
     if session_id in _rag_chain:
-        # Ensure type checker knows it has .invoke
-        rag = _rag_chain[session_id]  # type: ignore[assignment]
-        # or: rag = cast(Runnable, _rag_chain[session_id])
+        rag = _rag_chain[session_id]  
         result = rag.invoke({
             "input": user_input,
             "chat_history": hist.messages
@@ -256,7 +246,7 @@ def chat(user_input: str, history_ui, session_id: str):
         resp_msg = llm.invoke(hist.messages + [HumanMessage(content=user_input)])
         answer = to_text(resp_msg.content)
 
-    # Persist to Firestore (now a clean string)
+    # Persist to Firestore 
     hist.add_user_message(user_input)
     hist.add_ai_message(answer)
 
@@ -276,8 +266,7 @@ def load_chat(session_id: str):
 
     for msg in hist.messages:
         role = getattr(msg, "type", None)  # "human" | "ai" | ...
-        content = to_text(getattr(msg, "content", ""))  # <-- normalize to str
-
+        content = to_text(getattr(msg, "content", ""))  
         if role == "human":
             last_human = content
             ui_pairs.append([last_human, None])
@@ -333,8 +322,7 @@ with gr.Blocks(title="Ask Your Data · Chat with Websites, Documents & Saved Ses
 
     def start_new_chat(session_id: str):
         if not session_id or not session_id.strip():
-            return "", [], gr.update()  # nothing entered
-
+            return "", [], gr.update()  
         # Init Firestore
         init_history(session_id)
         # Reset vector store for this session
